@@ -12,7 +12,7 @@ import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
 import { FluxDispatcher, Menu } from "@webpack/common";
 
-import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionStateEvent, StreamSettings, StreamStartEvent, StreamUpdateSettingsEvent } from "./types";
+import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionStateEvent, StreamCreateEvent, StreamSettings, StreamStartEvent, StreamStopEvent, StreamUpdateSettingsEvent } from "./types";
 
 const Native = VencordNative.pluginHelpers.ShareActiveWindow as PluginNative<typeof import("./native")>;
 const logger = new Logger("ShareActiveWindow");
@@ -240,6 +240,10 @@ export default definePlugin({
     },
 
     flux: {
+        STREAM_CREATE(event: StreamCreateEvent): void {
+            sharingSettings.streamKey = event.streamKey;
+        },
+
         STREAM_START(event: StreamStartEvent): void {
             isSharingWindow = event.sourceId.startsWith("window:");
 
@@ -279,8 +283,10 @@ export default definePlugin({
             }
         },
 
-        STREAM_STOP(_event: any): void {
-            stopSharingWindow();
+        STREAM_STOP(event: StreamStopEvent): void {
+            if (event.streamKey === sharingSettings.streamKey) {
+                stopSharingWindow();
+            }
         },
 
         STREAM_UPDATE_SETTINGS(event: StreamUpdateSettingsEvent): void {
@@ -324,13 +330,14 @@ export default definePlugin({
         },
 
         RTC_CONNECTION_STATE(event: RtcConnectionStateEvent): void {
-            if (event.state === "RTC_DISCONNECTED") {
+            if (event.state === "RTC_DISCONNECTED" && event.streamKey === sharingSettings.streamKey) {
                 stopSharingWindow();
             }
         }
     },
 
     async start() {
+        patchFluxDispatcher();
         await Native.initActiveWindow();
         initActiveWindowLoop();
     },
