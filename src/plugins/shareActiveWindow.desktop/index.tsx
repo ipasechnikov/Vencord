@@ -124,14 +124,24 @@ function initActiveWindowLoop(): void {
                 return;
             }
 
+            const activeWindowPredicate = (source: DesktopCaptureSource) => {
+                return (
+                    source.id.includes(activeWindowHandle) || (
+                        source.name === activeWindow.title &&
+                        source.name.toLowerCase().includes("file explorer")
+                    )
+                );
+            };
+
             // Try to find in the cache at first
-            let activeWindowSource = desktopCaptureSources.find(source => source.id.includes(activeWindowHandle));
+            let activeWindowSource = desktopCaptureSources.find(activeWindowPredicate);
+
             if (activeWindowSource === undefined) {
                 // Invalidate the cache
                 desktopCaptureSources = await getDesktopCaptureSources();
 
                 // Try to find again
-                activeWindowSource = desktopCaptureSources.find(source => source.id.includes(activeWindowHandle));
+                activeWindowSource = desktopCaptureSources.find(activeWindowPredicate);
                 if (activeWindowSource === undefined) {
                     return;
                 }
