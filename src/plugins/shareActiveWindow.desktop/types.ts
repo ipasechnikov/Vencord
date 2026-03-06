@@ -21,6 +21,7 @@ export interface StreamSettings {
     goLiveModalDurationMs?: number;
     analyticsLocations?: string[];
     sourceId?: string;
+    streamKey?: string;
 }
 
 export interface StreamUpdateSettingsEvent {
@@ -28,6 +29,10 @@ export interface StreamUpdateSettingsEvent {
     readonly preset: number;
     readonly resolution: number;
     readonly soundshareEnabled: boolean;
+}
+
+export interface StreamCreateEvent {
+    readonly streamKey: string;
 }
 
 export interface StreamStartEvent {
@@ -43,6 +48,10 @@ export interface StreamStartEvent {
     readonly sourceId: string;
     readonly sourceName: string;
     readonly streamType: string;
+}
+
+export interface StreamStopEvent {
+    readonly streamKey: string;
 }
 
 export interface MediaEngineSetGoLiveSourceEvent {
@@ -65,4 +74,5 @@ export interface RtcConnectionStateEvent {
     readonly context: string;
     readonly hostname: string;
     readonly state: "RTC_DISCONNECTED";
+    readonly streamKey: string;
 }
