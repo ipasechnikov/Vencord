@@ -135,6 +135,11 @@ function initActiveWindowLoop(): void {
                 if (activeWindowSource === undefined) {
                     return;
                 }
+
+                // Don't focus on a window with a name of "Drag"
+                if (activeWindowSource.name.toLowerCase() === "drag") {
+                    return;
+                }
             }
 
             if (isSharingWindow) {
