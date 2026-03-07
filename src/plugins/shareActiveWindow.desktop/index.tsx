@@ -17,9 +17,15 @@ import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionSta
 const Native = VencordNative.pluginHelpers.ShareActiveWindow as PluginNative<typeof import("./native")>;
 const logger = new Logger("ShareActiveWindow");
 
+let discordPid: number;
+let discordWindowHandle: string;
+
 let activeWindowInterval: NodeJS.Timeout | undefined;
 let isSharingWindow: boolean = false;
 let sharingSettings: StreamSettings = {};
+
+let desktopCaptureSources: DesktopCaptureSource[] = [];
+let sourceIdStack: string[] = [];
 
 // Debug helper function to track Flux events
 // Call it in plugin's start method
@@ -31,6 +37,19 @@ function patchFluxDispatcher(): void {
     };
     FluxDispatcher.dispatch = newDispatch;
 }
+
+const getDiscordUtils = (() => {
+    let discordUtils: any;
+    return (): {
+        getWindowHandleFromPid(pid: number): string | undefined;
+        getPidFromWindowHandle(handle: string): number | undefined;
+    } => {
+        if (discordUtils === undefined) {
+            discordUtils = DiscordNative.nativeModules.requireModule("discord_utils");
+        }
+        return discordUtils;
+    };
+})();
 
 const shareWindow: (
     source: DesktopCaptureSource,
@@ -73,6 +92,7 @@ const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
 function stopSharingWindow(): void {
     isSharingWindow = false;
     sharingSettings = {};
+    sourceIdStack = [];
     stopActiveWindowLoop();
 }
 
@@ -89,11 +109,6 @@ function initActiveWindowLoop(): void {
         return;
     }
 
-    const discordUtils: {
-        getWindowHandleFromPid(pid: number): string | undefined;
-    } = DiscordNative.nativeModules.requireModule("discord_utils");
-
-    let desktopCaptureSources: DesktopCaptureSource[] = [];
     let isIntervalCallbackRunning = false;
 
     activeWindowInterval = setInterval(async () => {
@@ -113,13 +128,14 @@ function initActiveWindowLoop(): void {
                 return;
             }
 
-            const activeWindowHandle = discordUtils.getWindowHandleFromPid(activeWindow.pid);
+            const activeWindowHandle = getDiscordUtils().getWindowHandleFromPid(activeWindow.pid);
             if (activeWindowHandle === undefined) {
                 return;
             }
 
             const newSourceId = `window:${activeWindowHandle}`;
             const curSourceId = sharingSettings.sourceId;
+
             if (curSourceId?.includes(newSourceId)) {
                 return;
             }
@@ -160,6 +176,7 @@ function initActiveWindowLoop(): void {
 
             if (isSharingWindow) {
                 sharingSettings.sourceId = newSourceId;
+                sourceIdStack.push(newSourceId);
                 shareWindow(activeWindowSource, sharingSettings);
             }
         }
@@ -254,6 +271,16 @@ export default definePlugin({
     description: "Auto-switch to active window during screen sharing",
     authors: [Devs.ipasechnikov],
     settings,
+
+    patches: [
+        {
+            find: "handleDesktopSourceEnded=(",
+            replacement: {
+                match: /(?<=handleDesktopSourceEnded\s*=\s*\([^)]*\)\s*=>\s*{)[^}]+(?=})/,
+                replace: "if(!$self.handleDesktopSourceEnded()){$&;}",
+            },
+        },
+    ],
 
     contextMenus: {
         "manage-streams": manageStreamsContextMenuPatch,
@@ -354,16 +381,42 @@ export default definePlugin({
             if (event.state === "RTC_DISCONNECTED" && event.streamKey === sharingSettings.streamKey) {
                 stopSharingWindow();
             }
-        }
+        },
     },
 
     async start() {
-        patchFluxDispatcher();
+        discordPid = await Native.getDiscordPid();
+        discordWindowHandle = getDiscordUtils().getWindowHandleFromPid(discordPid)!;
+
         await Native.initActiveWindow();
         initActiveWindowLoop();
     },
 
     stop() {
         stopSharingWindow();
+    },
+
+    handleDesktopSourceEnded(): boolean {
+        while (true) {
+            let prevSourceId = sourceIdStack.pop();
+            if (prevSourceId === undefined) {
+                // Fallback to Discord window
+                const discordSourceId = `window:${discordWindowHandle}`;
+                prevSourceId = discordSourceId;
+            }
+
+            const prevCaptureSource = desktopCaptureSources.find(
+                source => source.id.includes(prevSourceId)
+            );
+
+            if (prevCaptureSource === undefined) {
+                continue;
+            }
+
+            sharingSettings.sourceId = prevSourceId;
+            shareWindow(prevCaptureSource, sharingSettings);
+
+            return true;
+        }
     },
 });
