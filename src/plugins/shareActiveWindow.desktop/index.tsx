@@ -109,6 +109,7 @@ function initActiveWindowLoop(): void {
         return;
     }
 
+    // Ensure that at any given moment of time only a single interval callback function is executing
     let isIntervalCallbackRunning = false;
 
     activeWindowInterval = setInterval(async () => {
@@ -195,7 +196,18 @@ function initActiveWindowLoop(): void {
 
             if (isSharingWindow) {
                 sharingSettings.sourceId = newSourceId;
+
+                // Prevent the source stack from growing too big
+                // Remove unavailable (closed) sources from it
+                const aliveSourceIds = sourceIdStack.filter(
+                    sourceId => desktopCaptureSources.findIndex(
+                        desktopCaptureSource => desktopCaptureSource.id.includes(sourceId)
+                    ) !== -1
+                );
+
+                sourceIdStack = aliveSourceIds;
                 sourceIdStack.push(newSourceId);
+
                 shareWindow(activeWindowSource, sharingSettings);
             }
         }
@@ -364,6 +376,7 @@ export default definePlugin({
         },
 
         STREAM_STOP(event: StreamStopEvent): void {
+            // Stop only for your own streams. Ignore other streams being stopped
             if (event.streamKey === sharingSettings.streamKey) {
                 stopSharingWindow();
             }
@@ -410,6 +423,7 @@ export default definePlugin({
         },
 
         RTC_CONNECTION_STATE(event: RtcConnectionStateEvent): void {
+            // Stop only for your own streams. Ignore other streams being stopped
             if (event.state === "RTC_DISCONNECTED" && event.streamKey === sharingSettings.streamKey) {
                 stopSharingWindow();
             }
@@ -420,6 +434,9 @@ export default definePlugin({
         discordPid = await Native.getDiscordPid();
         discordWindowHandle = getDiscordUtils().getWindowHandleFromPid(discordPid)!;
 
+        // For debug and development purposes only
+        // patchFluxDispatcher();
+
         await Native.initActiveWindow();
         initActiveWindowLoop();
     },
@@ -429,7 +446,9 @@ export default definePlugin({
     },
 
     handleDesktopSourceEnded(): boolean {
-        while (true) {
+        // Prevent potential infinite loops
+        const maxRetries: number = 1000;
+        for (let retry = 0; retry < maxRetries; retry++) {
             let prevSourceId = sourceIdStack.pop();
             if (prevSourceId === undefined) {
                 // Fallback to Discord window
@@ -450,5 +469,7 @@ export default definePlugin({
 
             return true;
         }
+
+        return false;
     },
 });
