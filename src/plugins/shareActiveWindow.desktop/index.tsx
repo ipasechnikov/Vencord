@@ -136,6 +136,12 @@ function initActiveWindowLoop(): void {
             // Try to find in the cache at first
             let activeWindowSource = desktopCaptureSources.find(activeWindowPredicate);
 
+            // Additional check if the top one has failed
+            // curSourceId?.includes(newSourceId)
+            if (curSourceId && activeWindowSource?.id.includes(curSourceId)) {
+                return;
+            }
+
             if (activeWindowSource === undefined) {
                 // Invalidate the cache
                 desktopCaptureSources = await getDesktopCaptureSources();
