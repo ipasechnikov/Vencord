@@ -31,3 +31,7 @@ export async function getActiveWindow(_e: IpcMainInvokeEvent): Promise<WindowInf
         return ActiveWindow.getActiveWindow();
     }
 }
+
+export function getDiscordPid(): number {
+    return process.pid;
+}
