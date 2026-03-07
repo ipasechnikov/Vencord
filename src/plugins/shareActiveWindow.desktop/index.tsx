@@ -140,11 +140,19 @@ function initActiveWindowLoop(): void {
                 return;
             }
 
+            const { focusWindowTitles } = settings.store;
             const activeWindowPredicate = (source: DesktopCaptureSource) => {
                 return (
                     source.id.includes(activeWindowHandle) || (
                         source.name === activeWindow.title &&
-                        source.name.toLowerCase().includes("file explorer")
+                        focusWindowTitles &&
+                        focusWindowTitles.split(";").filter(
+                            focusWindowTitle => !!focusWindowTitle
+                        ).findIndex(
+                            focusWindowTitle => source.name.toLowerCase().includes(
+                                focusWindowTitle.toLowerCase()
+                            )
+                        ) !== -1
                     )
                 );
             };
@@ -167,9 +175,20 @@ function initActiveWindowLoop(): void {
                 if (activeWindowSource === undefined) {
                     return;
                 }
+            }
 
-                // Don't focus on a window with a name of "Drag"
-                if (activeWindowSource.name.toLowerCase() === "drag") {
+            const { ignoreWindowTitles } = settings.store;
+            if (ignoreWindowTitles) {
+                const activeWindowSourceName = activeWindowSource.name.toLowerCase();
+                const isIgnoreWindow = ignoreWindowTitles.split(";").filter(
+                    ignoreWindowTitle => !!ignoreWindowTitle
+                ).findIndex(
+                    ignoreWindowTitle => activeWindowSourceName.includes(
+                        ignoreWindowTitle.toLowerCase()
+                    )
+                ) !== -1;
+
+                if (isIgnoreWindow) {
                     return;
                 }
             }
@@ -248,6 +267,7 @@ const settings = definePluginSettings({
             }
         },
     },
+
     checkInterval: {
         description: "How often to check for active window, in milliseconds",
         type: OptionType.NUMBER,
@@ -263,7 +283,19 @@ const settings = definePluginSettings({
             }
             return true;
         },
-    }
+    },
+
+    ignoreWindowTitles: {
+        description: "A list of case-insensitive parts of a window title separated by semicolon ';'",
+        type: OptionType.STRING,
+        default: "Drag;"
+    },
+
+    focusWindowTitles: {
+        description: "A list of case-insensitive parts of a window title separated by semicolon ';'",
+        type: OptionType.STRING,
+        default: "File Explorer;"
+    },
 });
 
 export default definePlugin({
