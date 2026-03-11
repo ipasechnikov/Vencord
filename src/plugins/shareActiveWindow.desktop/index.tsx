@@ -10,9 +10,9 @@ import { Devs } from "@utils/constants";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
-import { FluxDispatcher, Menu } from "@webpack/common";
+import { FluxDispatcher, Menu, UserStore } from "@webpack/common";
 
-import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionStateEvent, StreamCreateEvent, StreamSettings, StreamStartEvent, StreamStopEvent, StreamUpdateSettingsEvent } from "./types";
+import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionStateEvent, StreamSettings, StreamStartEvent, StreamStopEvent, StreamUpdateSettingsEvent } from "./types";
 
 const Native = VencordNative.pluginHelpers.ShareActiveWindow as PluginNative<typeof import("./native")>;
 const logger = new Logger("ShareActiveWindow");
@@ -88,6 +88,11 @@ const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
         return result;
     };
 })();
+
+function isMyStream(streamKey: string): boolean {
+    const currentUserId = UserStore.getCurrentUser().id;
+    return streamKey.endsWith(currentUserId);
+}
 
 function stopSharingWindow(): void {
     isSharingWindow = false;
@@ -332,10 +337,6 @@ export default definePlugin({
     },
 
     flux: {
-        STREAM_CREATE(event: StreamCreateEvent): void {
-            sharingSettings.streamKey = event.streamKey;
-        },
-
         STREAM_START(event: StreamStartEvent): void {
             isSharingWindow = event.sourceId.startsWith("window:");
 
@@ -377,7 +378,7 @@ export default definePlugin({
 
         STREAM_STOP(event: StreamStopEvent): void {
             // Stop only for your own streams. Ignore other streams being stopped
-            if (event.streamKey === sharingSettings.streamKey) {
+            if (isMyStream(event.streamKey)) {
                 stopSharingWindow();
             }
         },
@@ -424,7 +425,11 @@ export default definePlugin({
 
         RTC_CONNECTION_STATE(event: RtcConnectionStateEvent): void {
             // Stop only for your own streams. Ignore other streams being stopped
-            if (event.state === "RTC_DISCONNECTED" && event.streamKey === sharingSettings.streamKey) {
+            if (!isMyStream(event.streamKey)) {
+                return;
+            }
+
+            if (event.state === "RTC_DISCONNECTED") {
                 stopSharingWindow();
             }
         },

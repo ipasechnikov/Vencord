@@ -21,7 +21,6 @@ export interface StreamSettings {
     goLiveModalDurationMs?: number;
     analyticsLocations?: string[];
     sourceId?: string;
-    streamKey?: string;
 }
 
 export interface StreamUpdateSettingsEvent {
@@ -29,10 +28,6 @@ export interface StreamUpdateSettingsEvent {
     readonly preset: number;
     readonly resolution: number;
     readonly soundshareEnabled: boolean;
-}
-
-export interface StreamCreateEvent {
-    readonly streamKey: string;
 }
 
 export interface StreamStartEvent {
