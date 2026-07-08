@@ -53,6 +53,7 @@ export const CspPolicies: PolicyMap = {
 
     // Function Specific
     "api.github.com": ConnectSrc, // used for updating Vencord itself
+    "api.telegram.org": ConnectSrc, // VoiceJoinNotifier Telegram push
     "ws.audioscrobbler.com": ConnectSrc, // Last.fm API
     "musicbrainz.org": ConnectSrc,
     "*.listenbrainz.org": ConnectSrc,
