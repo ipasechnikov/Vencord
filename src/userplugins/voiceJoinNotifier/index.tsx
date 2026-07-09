@@ -7,7 +7,7 @@
 import { definePluginSettings } from "@api/Settings";
 import { showNotification } from "@api/Notifications";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, SelectedChannelStore, UserStore } from "@webpack/common";
+import { ChannelStore, GuildStore, SelectedChannelStore, UserStore } from "@webpack/common";
 
 interface VoiceStateChangeEvent {
     userId: string;
@@ -40,19 +40,26 @@ const settings = definePluginSettings({
     },
 });
 
-function sendTelegramNotification(displayName: string, channelName: string) {
+function sendTelegramNotification(
+    displayName: string,
+    channelName: string,
+    guildName: string | undefined,
+    avatarUrl: string,
+) {
     const token = settings.store.telegramBotToken;
     const chatId = settings.store.telegramChatId;
     if (!token || !chatId) return;
 
-    const text = `🔊 <b>${escapeHtml(displayName)}</b> joined <b>${escapeHtml(channelName)}</b>`;
+    const guildPart = guildName ? ` in <b>${escapeHtml(guildName)}</b>` : "";
+    const caption = `🔊 <b>${escapeHtml(displayName)}</b> joined <b>${escapeHtml(channelName)}</b>${guildPart}`;
 
-    fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             chat_id: chatId,
-            text: text,
+            photo: avatarUrl,
+            caption,
             parse_mode: "HTML",
         }),
     }).catch(() => {});
@@ -77,6 +84,11 @@ export default definePlugin({
             const myChannelId = SelectedChannelStore.getVoiceChannelId();
             if (!myChannelId) return;
 
+            const channel = ChannelStore.getChannel(myChannelId);
+            const guildName = channel?.guild_id
+                ? GuildStore.getGuild(channel.guild_id)?.name
+                : undefined;
+
             for (const state of voiceStates) {
                 const { userId, channelId, oldChannelId } = state;
                 const myId = UserStore.getCurrentUser().id;
@@ -89,15 +101,21 @@ export default definePlugin({
                     if (!user) continue;
 
                     const displayName = (user as any).globalName ?? user.username;
-                    const channelName = ChannelStore.getChannel(myChannelId)?.name ?? "Unknown";
+                    const channelName = channel?.name ?? "Unknown";
+                    const titlePrefix = guildName ? `${guildName} — ` : "";
 
                     showNotification({
                         title: `🔊 ${displayName}`,
-                        body: `Joined ${channelName}`,
+                        body: `${titlePrefix}Joined ${channelName}`,
                         icon: user.getAvatarURL(undefined, 80, false),
                     });
 
-                    sendTelegramNotification(displayName, channelName);
+                    sendTelegramNotification(
+                        displayName,
+                        channelName,
+                        guildName,
+                        user.getAvatarURL(undefined, 128, false),
+                    );
                 }
             }
         },
