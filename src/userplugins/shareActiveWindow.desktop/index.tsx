@@ -90,6 +90,7 @@ const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
 })();
 
 function isMyStream(streamKey: string): boolean {
+    if (!streamKey) return false;
     const currentUserId = UserStore.getCurrentUser().id;
     return streamKey.endsWith(currentUserId);
 }
