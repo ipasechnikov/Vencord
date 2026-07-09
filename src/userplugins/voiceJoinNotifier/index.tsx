@@ -96,7 +96,8 @@ export default definePlugin({
                 if (userId === myId && !settings.store.notifyOwnJoins) continue;
 
                 // Someone joined our channel (was not in it, now is)
-                if (channelId === myChannelId && oldChannelId !== myChannelId) {
+                // Skip if oldChannelId is undefined — that's a full state sync, not a transition
+                if (channelId === myChannelId && oldChannelId !== myChannelId && oldChannelId !== undefined) {
                     const user = UserStore.getUser(userId);
                     if (!user) continue;
 
