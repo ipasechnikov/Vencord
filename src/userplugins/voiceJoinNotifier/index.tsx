@@ -73,6 +73,11 @@ function escapeHtml(str: string): string {
         .replace(/"/g, "&quot;");
 }
 
+// Track users we've already notified for in the current channel.
+// Reset when switching channels to avoid false positives on reconnect.
+let notifiedUsers = new Set<string>();
+let currentChannelId: string | null = null;
+
 export default definePlugin({
     name: "VoiceJoinNotifier",
     description: "Shows a notification when someone joins your voice channel, with optional Telegram push",
@@ -89,15 +94,21 @@ export default definePlugin({
                 ? GuildStore.getGuild(channel.guild_id)?.name
                 : undefined;
 
+            // If we switched channels, reset the tracked set
+            if (myChannelId !== currentChannelId) {
+                notifiedUsers.clear();
+                currentChannelId = myChannelId;
+            }
+
             for (const state of voiceStates) {
                 const { userId, channelId, oldChannelId } = state;
                 const myId = UserStore.getCurrentUser().id;
 
                 if (userId === myId && !settings.store.notifyOwnJoins) continue;
 
-                // Someone joined our channel (was not in it, now is)
-                // Skip if oldChannelId is undefined — that's a full state sync, not a transition
-                if (channelId === myChannelId && oldChannelId !== myChannelId && oldChannelId !== undefined) {
+                // Someone joined our channel and we haven't notified for them yet
+                if (channelId === myChannelId && !notifiedUsers.has(userId)) {
+                    notifiedUsers.add(userId);
                     const user = UserStore.getUser(userId);
                     if (!user) continue;
 
@@ -117,6 +128,11 @@ export default definePlugin({
                         guildName,
                         user.getAvatarURL(undefined, 128, false),
                     );
+                }
+
+                // User left our channel — allow re-notification if they join again
+                if (channelId !== myChannelId && notifiedUsers.has(userId)) {
+                    notifiedUsers.delete(userId);
                 }
             }
         },
