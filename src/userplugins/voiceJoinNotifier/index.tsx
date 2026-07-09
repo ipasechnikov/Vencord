@@ -5,8 +5,9 @@
  */
 
 import { definePluginSettings } from "@api/Settings";
+import { showNotification } from "@api/Notifications";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, SelectedChannelStore, UserStore } from "@webpack/common";
 
 interface VoiceStateChangeEvent {
     userId: string;
@@ -67,7 +68,7 @@ function escapeHtml(str: string): string {
 
 export default definePlugin({
     name: "VoiceJoinNotifier",
-    description: "Shows a toast when someone joins your voice channel, with optional Telegram push",
+    description: "Shows a notification when someone joins your voice channel, with optional Telegram push",
     authors: [{ name: "Ilia Pasechnikov", id: 0n }],
     settings,
 
@@ -90,10 +91,10 @@ export default definePlugin({
                     const displayName = (user as any).globalName ?? user.username;
                     const channelName = ChannelStore.getChannel(myChannelId)?.name ?? "Unknown";
 
-                    Toasts.show({
-                        message: `${displayName} joined ${channelName}`,
-                        type: Toasts.Type.MESSAGE,
-                        id: Toasts.genId(),
+                    showNotification({
+                        title: `🔊 ${displayName}`,
+                        body: `Joined ${channelName}`,
+                        icon: user.getAvatarURL(undefined, 80, false),
                     });
 
                     sendTelegramNotification(displayName, channelName);
