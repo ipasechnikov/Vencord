@@ -7,7 +7,7 @@
 import { definePluginSettings } from "@api/Settings";
 import { showNotification } from "@api/Notifications";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, GuildStore, SelectedChannelStore, UserStore } from "@webpack/common";
+import { ChannelStore, GuildStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
 
 interface VoiceStateChangeEvent {
     userId: string;
@@ -84,6 +84,23 @@ export default definePlugin({
     authors: [{ name: "Ilia Pasechnikov", id: 0n }],
     settings,
 
+    start() {
+        // Pre-populate with users already in the channel to avoid notification burst on enable
+        const channelId = SelectedChannelStore.getVoiceChannelId();
+        if (channelId) {
+            currentChannelId = channelId;
+            const states = VoiceStateStore.getVoiceStatesForChannel(channelId) as Record<string, VoiceStateChangeEvent>;
+            for (const userId of Object.keys(states)) {
+                notifiedUsers.add(userId);
+            }
+        }
+    },
+
+    stop() {
+        notifiedUsers.clear();
+        currentChannelId = null;
+    },
+
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceStateChangeEvent[]; }) {
             const myChannelId = SelectedChannelStore.getVoiceChannelId();
@@ -101,7 +118,7 @@ export default definePlugin({
             }
 
             for (const state of voiceStates) {
-                const { userId, channelId, oldChannelId } = state;
+                const { userId, channelId } = state;
                 const myId = UserStore.getCurrentUser().id;
 
                 if (userId === myId && !settings.store.notifyOwnJoins) continue;
