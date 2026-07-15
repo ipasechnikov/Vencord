@@ -40,12 +40,41 @@ const settings = definePluginSettings({
     },
 });
 
+function sendTelegramMessage(
+    displayName: string,
+    channelName: string,
+    guildName: string | undefined,
+) {
+    const token = settings.store.telegramBotToken;
+    const chatId = settings.store.telegramChatId;
+    if (!token || !chatId) return;
+
+    const guildPart = guildName ? ` in <b>${escapeHtml(guildName)}</b>` : "";
+    const text = `🔊 <b>${escapeHtml(displayName)}</b> joined <b>${escapeHtml(channelName)}</b>${guildPart}`;
+
+    fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+        }),
+    }).catch(() => {});
+}
+
 function sendTelegramNotification(
     displayName: string,
     channelName: string,
     guildName: string | undefined,
     avatarUrl: string,
+    hasAvatar: boolean,
 ) {
+    if (!hasAvatar) {
+        sendTelegramMessage(displayName, channelName, guildName);
+        return;
+    }
+
     const token = settings.store.telegramBotToken;
     const chatId = settings.store.telegramChatId;
     if (!token || !chatId) return;
@@ -144,6 +173,7 @@ export default definePlugin({
                         channelName,
                         guildName,
                         user.getAvatarURL(undefined, 128, false),
+                        user.avatar !== null,
                     );
                 }
 
