@@ -146,9 +146,22 @@ export default definePlugin({
                 currentChannelId = myChannelId;
             }
 
+            const myId = UserStore.getCurrentUser().id;
+
+            // If we're joining a channel with existing users, pre-populate them
+            // to avoid notification bursts from the initial state sync
+            const myState = voiceStates.find(s => s.userId === myId);
+            if (myState && myState.channelId === myChannelId) {
+                const states = VoiceStateStore.getVoiceStatesForChannel(myChannelId) as Record<string, VoiceStateChangeEvent>;
+                for (const userId of Object.keys(states)) {
+                    if (userId !== myId) {
+                        notifiedUsers.add(userId);
+                    }
+                }
+            }
+
             for (const state of voiceStates) {
                 const { userId, channelId } = state;
-                const myId = UserStore.getCurrentUser().id;
 
                 if (userId === myId && !settings.store.notifyOwnJoins) continue;
 
