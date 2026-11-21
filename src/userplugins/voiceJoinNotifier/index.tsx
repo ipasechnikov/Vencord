@@ -6,8 +6,17 @@
 
 import { definePluginSettings } from "@api/Settings";
 import { showNotification } from "@api/Notifications";
+import { Logger } from "@utils/Logger";
+import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, GuildStore, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { User } from "@vencord/discord-types";
+import {
+    ChannelStore,
+    GuildStore,
+    SelectedChannelStore,
+    UserStore,
+    VoiceStateStore,
+} from "@webpack/common";
 
 interface VoiceStateChangeEvent {
     userId: string;
@@ -20,14 +29,15 @@ interface VoiceStateChangeEvent {
     sessionId: string;
 }
 
+const logger = new Logger("VoiceJoinNotifier");
+
 const settings = definePluginSettings({
     telegramBotToken: {
         description: "Telegram bot token for push notifications",
         type: OptionType.STRING,
         default: "",
         placeholder: "123456:ABCdef...",
-        // Vencord has no isSecret flag for string settings, so mask the input
-        // via the underlying TextInput's native "password" type instead.
+        // Vencord has no isSecret flag for string settings, so mask the input via the underlying TextInput's "password" type.
         componentProps: { type: "password" },
     },
     telegramChatId: {
@@ -44,15 +54,15 @@ const settings = definePluginSettings({
 });
 
 function escapeHtml(str: string): string {
-    // Telegram's HTML parse_mode only requires escaping &, < and > — it has
-    // no attribute syntax, so quotes don't need (and don't support) escaping.
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    // Telegram's HTML parse_mode only requires escaping &, < and >; it has no attribute syntax, so quotes don't support escaping.
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildJoinCaption(displayName: string, channelName: string, guildName: string | undefined): string {
+function buildJoinCaption(
+    displayName: string,
+    channelName: string,
+    guildName: string | undefined,
+): string {
     const guildPart = guildName ? ` in <b>${escapeHtml(guildName)}</b>` : "";
     return `🔊 <b>${escapeHtml(displayName)}</b> joined <b>${escapeHtml(channelName)}</b>${guildPart}`;
 }
@@ -62,25 +72,18 @@ interface TelegramJob {
     payload: Record<string, unknown>;
 }
 
-// Telegram enforces roughly one message per second per chat. Sends triggered
-// by a voice-join burst are queued and drained at this pace, and a 429
-// response's retry_after is honored before resuming the queue.
+// Telegram enforces roughly one message per second per chat, so sends are queued and drained at this pace; 429 retry_after is honored.
 const TELEGRAM_SEND_INTERVAL_MS = 1100;
 
 const telegramQueue: TelegramJob[] = [];
 let isProcessingTelegramQueue = false;
-
-function sleep(ms: number) {
-    return new Promise<void>(resolve => setTimeout(resolve, ms));
-}
 
 function queueTelegramSend(job: TelegramJob) {
     telegramQueue.push(job);
     if (!isProcessingTelegramQueue) processTelegramQueue();
 }
 
-// Sends the job at the front of the queue. Returns a retry delay in ms if
-// Telegram rate-limited the request, or null if the queue should move on.
+// Sends the job at the front of the queue. Returns a retry delay in ms when rate-limited, or null to move on.
 async function sendTelegramJob(job: TelegramJob): Promise<number | null> {
     const token = settings.store.telegramBotToken;
     const chatId = settings.store.telegramChatId;
@@ -99,15 +102,15 @@ async function sendTelegramJob(job: TelegramJob): Promise<number | null> {
         if (res.status === 429) {
             const body = await res.json().catch(() => null);
             const retryAfterSec = body?.parameters?.retry_after ?? 1;
-            console.warn(`[VoiceJoinNotifier] Telegram rate limited, retrying ${job.endpoint} in ${retryAfterSec}s`);
+            logger.warn(`Telegram rate limited, retrying ${job.endpoint} in ${retryAfterSec}s`);
             return retryAfterSec * 1000;
         }
 
         if (!res.ok) {
-            console.error(`[VoiceJoinNotifier] Telegram ${job.endpoint} failed:`, res.status, res.statusText);
+            logger.error(`Telegram ${job.endpoint} failed:`, res.status, res.statusText);
         }
     } catch (err) {
-        console.error(`[VoiceJoinNotifier] Telegram ${job.endpoint} error:`, err);
+        logger.error(`Telegram ${job.endpoint} error:`, err);
     }
 
     return null;
@@ -132,34 +135,47 @@ async function processTelegramQueue() {
     isProcessingTelegramQueue = false;
 }
 
-function sendTelegramNotification(
-    displayName: string,
-    channelName: string,
-    guildName: string | undefined,
-    avatarUrl: string,
-    hasAvatar: boolean,
-) {
+function sendTelegramNotification(user: User, channelName: string, guildName: string | undefined) {
     if (!settings.store.telegramBotToken || !settings.store.telegramChatId) return;
 
-    const text = buildJoinCaption(displayName, channelName, guildName);
+    const text = buildJoinCaption(user.globalName ?? user.username, channelName, guildName);
 
-    if (hasAvatar) {
-        queueTelegramSend({ endpoint: "sendPhoto", payload: { photo: avatarUrl, caption: text, parse_mode: "HTML" } });
+    if (user.avatar !== null) {
+        queueTelegramSend({
+            endpoint: "sendPhoto",
+            payload: {
+                photo: user.getAvatarURL(undefined, 128, false),
+                caption: text,
+                parse_mode: "HTML",
+            },
+        });
     } else {
         queueTelegramSend({ endpoint: "sendMessage", payload: { text, parse_mode: "HTML" } });
     }
 }
 
-// notifiedUsers/currentChannelId/telegramQueue are module-level state, which
-// only works correctly because Vencord instantiates this plugin once. If a
-// plugin is ever loaded multiple times concurrently, this state must move
-// into a per-instance closure instead.
+// Module-level state is safe only because Vencord instantiates this plugin once; concurrent instances would need per-instance state.
 let notifiedUsers = new Set<string>();
 let currentChannelId: string | null = null;
 
+// Adds users already present in the channel so enabling or joining doesn't fire a burst of notifications.
+function prepopulateNotifiedUsers(channelId: string, excludeIds?: Set<string>) {
+    const myId = UserStore.getCurrentUser().id;
+    const states = VoiceStateStore.getVoiceStatesForChannel(channelId) as Record<
+        string,
+        VoiceStateChangeEvent
+    >;
+    for (const userId of Object.keys(states)) {
+        if (userId !== myId && !excludeIds?.has(userId)) {
+            notifiedUsers.add(userId);
+        }
+    }
+}
+
 export default definePlugin({
     name: "VoiceJoinNotifier",
-    description: "Shows a notification when someone joins your voice channel, with optional Telegram push",
+    description:
+        "Shows a notification when someone joins your voice channel, with optional Telegram push",
     authors: [{ name: "Ilia Pasechnikov", id: 0n }],
     settings,
 
@@ -168,13 +184,7 @@ export default definePlugin({
         const channelId = SelectedChannelStore.getVoiceChannelId();
         if (channelId) {
             currentChannelId = channelId;
-            const myId = UserStore.getCurrentUser().id;
-            const states = VoiceStateStore.getVoiceStatesForChannel(channelId) as Record<string, VoiceStateChangeEvent>;
-            for (const userId of Object.keys(states)) {
-                if (userId !== myId) {
-                    notifiedUsers.add(userId);
-                }
-            }
+            prepopulateNotifiedUsers(channelId);
         }
     },
 
@@ -184,11 +194,10 @@ export default definePlugin({
     },
 
     flux: {
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceStateChangeEvent[]; }) {
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceStateChangeEvent[] }) {
             const myChannelId = SelectedChannelStore.getVoiceChannelId();
             if (!myChannelId) {
-                // Fully disconnected from voice — reset so reconnecting to the
-                // same channel doesn't get blocked by stale notifiedUsers entries
+                // Fully disconnected from voice — reset so reconnecting to the same channel isn't blocked by stale entries
                 notifiedUsers.clear();
                 currentChannelId = null;
                 return;
@@ -207,20 +216,11 @@ export default definePlugin({
 
             const myId = UserStore.getCurrentUser().id;
 
-            // If we're joining a channel with existing users, pre-populate them
-            // to avoid notification bursts from the initial state sync. Users
-            // who are joining in this very same batch are excluded so their
-            // join is still detected and notified below, instead of being
-            // silently swallowed as "already there".
-            const myState = voiceStates.find(s => s.userId === myId);
+            // We're joining a channel with users already in it: pre-populate them to avoid a burst
+            // from the initial state sync, excluding this batch's joiners so their join still notifies below.
+            const myState = voiceStates.find((s) => s.userId === myId);
             if (myState && myState.channelId === myChannelId) {
-                const batchUserIds = new Set(voiceStates.map(s => s.userId));
-                const states = VoiceStateStore.getVoiceStatesForChannel(myChannelId) as Record<string, VoiceStateChangeEvent>;
-                for (const userId of Object.keys(states)) {
-                    if (userId !== myId && !batchUserIds.has(userId)) {
-                        notifiedUsers.add(userId);
-                    }
-                }
+                prepopulateNotifiedUsers(myChannelId, new Set(voiceStates.map((s) => s.userId)));
             }
 
             for (const state of voiceStates) {
@@ -244,13 +244,7 @@ export default definePlugin({
                         icon: user.getAvatarURL(undefined, 80, false),
                     });
 
-                    sendTelegramNotification(
-                        displayName,
-                        channelName,
-                        guildName,
-                        user.getAvatarURL(undefined, 128, false),
-                        user.avatar !== null,
-                    );
+                    sendTelegramNotification(user, channelName, guildName);
                 }
 
                 // User left our channel — allow re-notification if they join again

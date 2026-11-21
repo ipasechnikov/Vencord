@@ -9,8 +9,7 @@ import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
-import { FluxDispatcher, Menu, UserStore } from "@webpack/common";
-
+import { Menu, UserStore } from "@webpack/common";
 import {
     DesktopCaptureSource,
     MediaEngineSetGoLiveSourceEvent,
@@ -36,15 +35,16 @@ let sharingSettings: StreamSettings = {};
 let desktopCaptureSources: DesktopCaptureSource[] = [];
 let sourceIdStack: string[] = [];
 
-// Debug helper function to track Flux events
-// Call it in plugin's start method
-function patchFluxDispatcher(): void {
-    const oldDispatch = FluxDispatcher.dispatch.bind(FluxDispatcher);
-    const newDispatch = (payload) => {
-        logger.debug("[Flux Event]", payload.type, payload);
-        return oldDispatch(payload);
-    };
-    FluxDispatcher.dispatch = newDispatch;
+// Copies the given fields from source to target, skipping undefined values.
+function copyDefined<K extends keyof StreamSettings>(
+    target: StreamSettings,
+    source: Partial<StreamSettings>,
+    keys: K[],
+) {
+    for (const key of keys) {
+        const value = source[key];
+        if (value !== undefined) target[key] = value;
+    }
 }
 
 const getDiscordUtils = (() => {
@@ -363,25 +363,13 @@ export default definePlugin({
                 return;
             }
 
-            if (event.analyticsLocations !== undefined) {
-                sharingSettings.analyticsLocations = event.analyticsLocations;
-            }
-
-            if (event.audioSourceId !== undefined) {
-                sharingSettings.audioSourceId = event.audioSourceId;
-            }
-
-            if (event.goLiveModalDurationMs !== undefined) {
-                sharingSettings.goLiveModalDurationMs = event.goLiveModalDurationMs;
-            }
-
-            if (event.previewDisabled !== undefined) {
-                sharingSettings.previewDisabled = event.previewDisabled;
-            }
-
-            if (event.sourceId !== undefined) {
-                sharingSettings.sourceId = event.sourceId;
-            }
+            copyDefined(sharingSettings, event, [
+                "analyticsLocations",
+                "audioSourceId",
+                "goLiveModalDurationMs",
+                "previewDisabled",
+                "sourceId",
+            ]);
 
             // Init loop if it is not running yet
             if (!activeWindowInterval) {
@@ -397,37 +385,17 @@ export default definePlugin({
         },
 
         STREAM_UPDATE_SETTINGS(event: StreamUpdateSettingsEvent): void {
-            if (event.preset !== undefined) {
-                sharingSettings.preset = event.preset;
-            }
-
+            copyDefined(sharingSettings, event, ["preset", "resolution", "soundshareEnabled"]);
             if (event.frameRate !== undefined) {
                 sharingSettings.fps = event.frameRate;
-            }
-
-            if (event.resolution !== undefined) {
-                sharingSettings.resolution = event.resolution;
-            }
-
-            if (event.soundshareEnabled !== undefined) {
-                sharingSettings.soundshareEnabled = event.soundshareEnabled;
             }
         },
 
         MEDIA_ENGINE_SET_GO_LIVE_SOURCE(event: MediaEngineSetGoLiveSourceEvent): void {
-            const preset = event.settings?.qualityOptions?.preset;
-            if (preset !== undefined) {
-                sharingSettings.preset = preset;
-            }
-
-            const frameRate = event.settings?.qualityOptions?.frameRate;
-            if (frameRate !== undefined) {
-                sharingSettings.fps = frameRate;
-            }
-
-            const resolution = event.settings?.qualityOptions?.resolution;
-            if (resolution !== undefined) {
-                sharingSettings.resolution = resolution;
+            const quality = event.settings?.qualityOptions;
+            copyDefined(sharingSettings, quality ?? {}, ["preset", "resolution"]);
+            if (quality?.frameRate !== undefined) {
+                sharingSettings.fps = quality.frameRate;
             }
 
             const sound = event.settings?.desktopSettings?.sound;
@@ -451,9 +419,6 @@ export default definePlugin({
     async start() {
         discordPid = await Native.getDiscordPid();
         discordWindowHandle = getDiscordUtils().getWindowHandleFromPid(discordPid)!;
-
-        // For debug and development purposes only
-        // patchFluxDispatcher();
 
         await Native.initActiveWindow();
         initActiveWindowLoop();
