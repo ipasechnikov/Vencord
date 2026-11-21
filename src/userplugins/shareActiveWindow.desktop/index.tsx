@@ -6,15 +6,24 @@
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
-import { Devs } from "@utils/constants";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
 import { FluxDispatcher, Menu, UserStore } from "@webpack/common";
 
-import { DesktopCaptureSource, MediaEngineSetGoLiveSourceEvent, RtcConnectionStateEvent, StreamSettings, StreamStartEvent, StreamStopEvent, StreamUpdateSettingsEvent } from "./types";
+import {
+    DesktopCaptureSource,
+    MediaEngineSetGoLiveSourceEvent,
+    RtcConnectionStateEvent,
+    StreamSettings,
+    StreamStartEvent,
+    StreamStopEvent,
+    StreamUpdateSettingsEvent,
+} from "./types";
 
-const Native = VencordNative.pluginHelpers.ShareActiveWindow as PluginNative<typeof import("./native")>;
+const Native = VencordNative.pluginHelpers.ShareActiveWindow as PluginNative<
+    typeof import("./native")
+>;
 const logger = new Logger("ShareActiveWindow");
 
 let discordPid: number;
@@ -31,7 +40,7 @@ let sourceIdStack: string[] = [];
 // Call it in plugin's start method
 function patchFluxDispatcher(): void {
     const oldDispatch = FluxDispatcher.dispatch.bind(FluxDispatcher);
-    const newDispatch = payload => {
+    const newDispatch = (payload) => {
         logger.debug("[Flux Event]", payload.type, payload);
         return oldDispatch(payload);
     };
@@ -51,19 +60,19 @@ const getDiscordUtils = (() => {
     };
 })();
 
-const shareWindow: (
-    source: DesktopCaptureSource,
-    settings: StreamSettings,
-) => void = findByCodeLazy(',"no permission"]');
+const shareWindow: (source: DesktopCaptureSource, settings: StreamSettings) => void =
+    findByCodeLazy(',"no permission"]');
 
 const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
     let result: Promise<DesktopCaptureSource[]> | undefined = undefined;
 
     return (): Promise<DesktopCaptureSource[]> => {
-        const { desktopCapture }: {
+        const {
+            desktopCapture,
+        }: {
             desktopCapture: {
                 getDesktopCaptureSources(x: {
-                    types: string[],
+                    types: string[];
                     thumbnailSize: {
                         width: number;
                         height: number;
@@ -73,16 +82,18 @@ const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
         } = DiscordNative;
 
         if (result === undefined) {
-            result = desktopCapture.getDesktopCaptureSources({
-                types: ["window"],
-                thumbnailSize: {
-                    width: 0,
-                    height: 0,
-                },
-            }).then(r => {
-                result = undefined;
-                return r;
-            });
+            result = desktopCapture
+                .getDesktopCaptureSources({
+                    types: ["window"],
+                    thumbnailSize: {
+                        width: 0,
+                        height: 0,
+                    },
+                })
+                .then((r) => {
+                    result = undefined;
+                    return r;
+                });
         }
 
         return result;
@@ -150,17 +161,15 @@ function initActiveWindowLoop(): void {
             const { focusWindowTitles } = settings.store;
             const activeWindowPredicate = (source: DesktopCaptureSource) => {
                 return (
-                    source.id.includes(activeWindowHandle) || (
-                        source.name === activeWindow.title &&
+                    source.id.includes(activeWindowHandle) ||
+                    (source.name === activeWindow.title &&
                         focusWindowTitles &&
-                        focusWindowTitles.split(";").filter(
-                            focusWindowTitle => !!focusWindowTitle
-                        ).findIndex(
-                            focusWindowTitle => source.name.toLowerCase().includes(
-                                focusWindowTitle.toLowerCase()
-                            )
-                        ) !== -1
-                    )
+                        focusWindowTitles
+                            .split(";")
+                            .filter((focusWindowTitle) => !!focusWindowTitle)
+                            .findIndex((focusWindowTitle) =>
+                                source.name.toLowerCase().includes(focusWindowTitle.toLowerCase()),
+                            ) !== -1)
                 );
             };
 
@@ -187,13 +196,13 @@ function initActiveWindowLoop(): void {
             const { ignoreWindowTitles } = settings.store;
             if (ignoreWindowTitles) {
                 const activeWindowSourceName = activeWindowSource.name.toLowerCase();
-                const isIgnoreWindow = ignoreWindowTitles.split(";").filter(
-                    ignoreWindowTitle => !!ignoreWindowTitle
-                ).findIndex(
-                    ignoreWindowTitle => activeWindowSourceName.includes(
-                        ignoreWindowTitle.toLowerCase()
-                    )
-                ) !== -1;
+                const isIgnoreWindow =
+                    ignoreWindowTitles
+                        .split(";")
+                        .filter((ignoreWindowTitle) => !!ignoreWindowTitle)
+                        .findIndex((ignoreWindowTitle) =>
+                            activeWindowSourceName.includes(ignoreWindowTitle.toLowerCase()),
+                        ) !== -1;
 
                 if (isIgnoreWindow) {
                     return;
@@ -206,9 +215,10 @@ function initActiveWindowLoop(): void {
                 // Prevent the source stack from growing too big
                 // Remove unavailable (closed) sources from it
                 const aliveSourceIds = sourceIdStack.filter(
-                    sourceId => desktopCaptureSources.findIndex(
-                        desktopCaptureSource => desktopCaptureSource.id.includes(sourceId)
-                    ) !== -1
+                    (sourceId) =>
+                        desktopCaptureSources.findIndex((desktopCaptureSource) =>
+                            desktopCaptureSource.id.includes(sourceId),
+                        ) !== -1,
                 );
 
                 sourceIdStack = aliveSourceIds;
@@ -216,8 +226,7 @@ function initActiveWindowLoop(): void {
 
                 shareWindow(activeWindowSource, sharingSettings);
             }
-        }
-        finally {
+        } finally {
             isIntervalCallbackRunning = false;
         }
     }, settings.store.checkInterval);
@@ -242,8 +251,8 @@ const manageStreamsContextMenuPatch: NavContextMenuPatchCallback = (children): v
             id="stream-settings-vc-saw-share-active-window"
             label="Share Active Window"
             checked={isEnabled}
-            action={() => settings.store.isEnabled = !isEnabled}
-        />
+            action={() => (settings.store.isEnabled = !isEnabled)}
+        />,
     );
 };
 
@@ -256,15 +265,16 @@ const streamOptionsContextMenuPatch: NavContextMenuPatchCallback = (children): v
         return;
     }
 
-    const shareActiveWindowCheckbox =
+    const shareActiveWindowCheckbox = (
         <Menu.MenuCheckboxItem
             id="stream-option-vc-saw-share-active-window"
             label="Share active window"
             checked={isEnabled}
-            action={() => settings.store.isEnabled = !isEnabled}
-        />;
+            action={() => (settings.store.isEnabled = !isEnabled)}
+        />
+    );
 
-    const idx = mainGroup.findIndex(c => c?.props?.id === "stream-option-mute");
+    const idx = mainGroup.findIndex((c) => c?.props?.id === "stream-option-mute");
     if (idx !== -1) {
         mainGroup.splice(idx + 1, 0, shareActiveWindowCheckbox);
     } else {
@@ -304,22 +314,24 @@ const settings = definePluginSettings({
     },
 
     ignoreWindowTitles: {
-        description: "A list of case-insensitive parts of a window title separated by semicolon ';'",
+        description:
+            "A list of case-insensitive parts of a window title separated by semicolon ';'",
         type: OptionType.STRING,
-        default: "Drag;"
+        default: "Drag;",
     },
 
     focusWindowTitles: {
-        description: "A list of case-insensitive parts of a window title separated by semicolon ';'",
+        description:
+            "A list of case-insensitive parts of a window title separated by semicolon ';'",
         type: OptionType.STRING,
-        default: "File Explorer;"
+        default: "File Explorer;",
     },
 });
 
 export default definePlugin({
     name: "ShareActiveWindow",
     description: "Auto-switch to active window during screen sharing",
-    authors: [Devs.ipasechnikov],
+    authors: [{ name: "Ilia Pasechnikov", id: 0n }],
     settings,
 
     patches: [
@@ -462,8 +474,8 @@ export default definePlugin({
                 prevSourceId = discordSourceId;
             }
 
-            const prevCaptureSource = desktopCaptureSources.find(
-                source => source.id.includes(prevSourceId)
+            const prevCaptureSource = desktopCaptureSources.find((source) =>
+                source.id.includes(prevSourceId),
             );
 
             if (prevCaptureSource === undefined) {
