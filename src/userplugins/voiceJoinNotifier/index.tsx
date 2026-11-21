@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { definePluginSettings } from "@api/Settings";
 import { showNotification } from "@api/Notifications";
+import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
@@ -155,7 +155,7 @@ function sendTelegramNotification(user: User, channelName: string, guildName: st
 }
 
 // Module-level state is safe only because Vencord instantiates this plugin once; concurrent instances would need per-instance state.
-let notifiedUsers = new Set<string>();
+const notifiedUsers = new Set<string>();
 let currentChannelId: string | null = null;
 
 // Adds users already present in the channel so enabling or joining doesn't fire a burst of notifications.
@@ -218,9 +218,9 @@ export default definePlugin({
 
             // We're joining a channel with users already in it: pre-populate them to avoid a burst
             // from the initial state sync, excluding this batch's joiners so their join still notifies below.
-            const myState = voiceStates.find((s) => s.userId === myId);
+            const myState = voiceStates.find(s => s.userId === myId);
             if (myState && myState.channelId === myChannelId) {
-                prepopulateNotifiedUsers(myChannelId, new Set(voiceStates.map((s) => s.userId)));
+                prepopulateNotifiedUsers(myChannelId, new Set(voiceStates.map(s => s.userId)));
             }
 
             for (const state of voiceStates) {

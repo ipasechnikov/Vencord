@@ -139,6 +139,7 @@
                 "src/utils/apng.ts",
                 "src/utils/intlHash.ts",
                 "src/plugins/youtubeAdblock.desktop/adguard.js",
+                "src/userplugins/shareActiveWindow.desktop/vendor/**",
                 "browser/userscript.meta.js"
             ],
             "rules": {

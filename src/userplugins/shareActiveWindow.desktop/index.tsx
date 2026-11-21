@@ -10,6 +10,7 @@ import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy } from "@webpack";
 import { Menu, UserStore } from "@webpack/common";
+
 import {
     DesktopCaptureSource,
     MediaEngineSetGoLiveSourceEvent,
@@ -90,7 +91,7 @@ const getDesktopCaptureSources: () => Promise<DesktopCaptureSource[]> = (() => {
                         height: 0,
                     },
                 })
-                .then((r) => {
+                .then(r => {
                     result = undefined;
                     return r;
                 });
@@ -166,8 +167,8 @@ function initActiveWindowLoop(): void {
                         focusWindowTitles &&
                         focusWindowTitles
                             .split(";")
-                            .filter((focusWindowTitle) => !!focusWindowTitle)
-                            .findIndex((focusWindowTitle) =>
+                            .filter(focusWindowTitle => !!focusWindowTitle)
+                            .findIndex(focusWindowTitle =>
                                 source.name.toLowerCase().includes(focusWindowTitle.toLowerCase()),
                             ) !== -1)
                 );
@@ -199,8 +200,8 @@ function initActiveWindowLoop(): void {
                 const isIgnoreWindow =
                     ignoreWindowTitles
                         .split(";")
-                        .filter((ignoreWindowTitle) => !!ignoreWindowTitle)
-                        .findIndex((ignoreWindowTitle) =>
+                        .filter(ignoreWindowTitle => !!ignoreWindowTitle)
+                        .findIndex(ignoreWindowTitle =>
                             activeWindowSourceName.includes(ignoreWindowTitle.toLowerCase()),
                         ) !== -1;
 
@@ -215,8 +216,8 @@ function initActiveWindowLoop(): void {
                 // Prevent the source stack from growing too big
                 // Remove unavailable (closed) sources from it
                 const aliveSourceIds = sourceIdStack.filter(
-                    (sourceId) =>
-                        desktopCaptureSources.findIndex((desktopCaptureSource) =>
+                    sourceId =>
+                        desktopCaptureSources.findIndex(desktopCaptureSource =>
                             desktopCaptureSource.id.includes(sourceId),
                         ) !== -1,
                 );
@@ -274,7 +275,7 @@ const streamOptionsContextMenuPatch: NavContextMenuPatchCallback = (children): v
         />
     );
 
-    const idx = mainGroup.findIndex((c) => c?.props?.id === "stream-option-mute");
+    const idx = mainGroup.findIndex(c => c?.props?.id === "stream-option-mute");
     if (idx !== -1) {
         mainGroup.splice(idx + 1, 0, shareActiveWindowCheckbox);
     } else {
@@ -439,7 +440,7 @@ export default definePlugin({
                 prevSourceId = discordSourceId;
             }
 
-            const prevCaptureSource = desktopCaptureSources.find((source) =>
+            const prevCaptureSource = desktopCaptureSources.find(source =>
                 source.id.includes(prevSourceId),
             );
 
